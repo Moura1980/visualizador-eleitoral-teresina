@@ -5,16 +5,6 @@
   <title>Visualizador Eleitoral</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<<<<<<< HEAD
-  <style>
-    #map { height: 100vh; width: 100%; }
-  </style>
-</head>
-<body>
-<div id="map"></div>
-<script>
-
-=======
 
   <style>
     html, body {
@@ -144,7 +134,6 @@
 <div id="map"></div>
 
 <script>
->>>>>>> joao-pedro
 const cores = {
   "RAFAEL TAJRA FONTELES": "#e74c3c",
   "SILVIO MENDES DE OLIVEIRA FILHO": "#2980b9",
@@ -167,9 +156,6 @@ const candidatos = [
 
 const map = L.map('map').setView([-5.09, -42.80], 12);
 
-<<<<<<< HEAD
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
-=======
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   attribution: '&copy; OpenStreetMap & CartoDB'
 }).addTo(map);
@@ -418,56 +404,10 @@ toggleSidebar.addEventListener("click", () => {
   sidebar.classList.toggle("collapsed");
   toggleSidebar.textContent = sidebar.classList.contains("collapsed") ? "▶" : "◀";
 });
->>>>>>> joao-pedro
 
 fetch("resultados.geojson")
   .then(r => r.json())
   .then(data => {
-<<<<<<< HEAD
-    L.geoJSON(data, {
-      pointToLayer: (feature, latlng) => {
-        const p = feature.properties;
-        const cor = cores[p.vencedor] || "gray";
-        const raio = Math.sqrt(p.TOTAL) / 6;
-
-        return L.circleMarker(latlng, {
-          radius: raio,
-          fillColor: cor,
-          color: "#fff",
-          weight: 1,
-          fillOpacity: 0.8
-        });
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties;
-
-        const lista = candidatos
-          .map(c => ({ nome: c, pct: p["% " + c] || 0 }))
-          .sort((a, b) => b.pct - a.pct)
-          .map(c => {
-            const destaque = c.nome === p.vencedor
-              ? `style="font-weight:bold; color:${cores[c.nome] || '#333'}"` : "";
-            const votos = p[c.nome] || 0;
-            return `<tr ${destaque}>
-              <td>${c.nome}</td>
-              <td style="text-align:right; padding-left:8px">${votos}</td>
-              <td style="text-align:right; padding-left:8px">${c.pct.toFixed(2)}%</td>
-            </tr>`;
-          })
-          .join("");
-
-        layer.bindPopup(`
-          <b>${p["LOCAL DE VOTAÇÃO"]}</b><br>
-          Total de votos: ${p.TOTAL}<br><br>
-          <table style="font-size:12px; border-collapse:collapse; width:100%">
-            ${lista}
-          </table>
-        `, { maxWidth: 360 });
-      }
-    }).addTo(map);
-  });
-
-=======
     geojsonData = data;
     renderizarListaBairros();
     aplicarFiltro();
@@ -476,7 +416,6 @@ fetch("resultados.geojson")
     console.error("Erro ao carregar resultados.geojson:", err);
     resultInfo.textContent = "Erro ao carregar os dados do mapa.";
   });
->>>>>>> joao-pedro
 </script>
 </body>
 </html>

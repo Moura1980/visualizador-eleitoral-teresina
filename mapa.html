@@ -63,8 +63,10 @@ fetch("resultados.geojson")
           .map(c => {
             const destaque = c.nome === p.vencedor
               ? `style="font-weight:bold; color:${cores[c.nome] || '#333'}"` : "";
+            const votos = p[c.nome] || 0;
             return `<tr ${destaque}>
               <td>${c.nome}</td>
+              <td style="text-align:right; padding-left:8px">${votos}</td>
               <td style="text-align:right; padding-left:8px">${c.pct.toFixed(2)}%</td>
             </tr>`;
           })

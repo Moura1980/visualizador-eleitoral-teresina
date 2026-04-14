@@ -5,14 +5,135 @@
   <title>Visualizador Eleitoral</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
   <style>
-    #map { height: 100vh; width: 100%; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+    }
+
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+
+    #sidebar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      width: 280px;
+      max-height: 90vh;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+      padding: 14px;
+      overflow: visible;
+      transition: transform 0.3s ease;
+    }
+
+    #sidebar.collapsed {
+      transform: translateX(-245px);
+    }
+
+    #sidebar h3 {
+      margin: 0 0 10px 0;
+      font-size: 18px;
+    }
+
+    #bairroSearch {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 14px;
+      box-sizing: border-box;
+      margin-bottom: 10px;
+    }
+
+    #bairroList {
+      max-height: 60vh;
+      overflow-y: auto;
+      border: 1px solid #eee;
+      border-radius: 8px;
+      padding: 6px;
+      background: #fafafa;
+    }
+
+    .bairro-item {
+      padding: 8px 10px;
+      cursor: pointer;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .bairro-item:hover {
+      background: #eaf3ff;
+    }
+
+    .bairro-item.active {
+      background: #d6e9ff;
+      font-weight: bold;
+    }
+
+    #clearFilter {
+      margin-top: 10px;
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      background: #f1f1f1;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    #clearFilter:hover {
+      background: #e3e3e3;
+    }
+
+    #resultInfo {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #555;
+    }
+
+    #toggleSidebar {
+      position: absolute;
+      top: 50%;
+      right: -18px;
+      transform: translateY(-50%);
+      width: 36px;
+      height: 64px;
+      border: none;
+      border-radius: 0 10px 10px 0;
+      background: white;
+      box-shadow: 2px 2px 10px rgba(0,0,0,0.15);
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: bold;
+    }
+
+    #toggleSidebar:hover {
+      background: #f3f3f3;
+    }
   </style>
 </head>
 <body>
-<div id="map"></div>
-<script>
 
+<div id="sidebar">
+  <button id="toggleSidebar">◀</button>
+  <h3>Bairros</h3>
+  <input type="text" id="bairroSearch" placeholder="Pesquisar bairro...">
+  <div id="bairroList"></div>
+  <button id="clearFilter">Limpar filtro</button>
+  <div id="resultInfo">Exibindo todos os bairros</div>
+</div>
+
+<div id="map"></div>
+
+<script>
 const cores = {
   "RAFAEL TAJRA FONTELES": "#e74c3c",
   "SILVIO MENDES DE OLIVEIRA FILHO": "#2980b9",
@@ -35,54 +156,266 @@ const candidatos = [
 
 const map = L.map('map').setView([-5.09, -42.80], 12);
 
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png').addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '&copy; OpenStreetMap & CartoDB'
+}).addTo(map);
+
+let geojsonLayer;
+let geojsonData;
+let bairroSelecionado = null;
+
+const bairroSearch = document.getElementById("bairroSearch");
+const bairroList = document.getElementById("bairroList");
+const clearFilter = document.getElementById("clearFilter");
+const resultInfo = document.getElementById("resultInfo");
+const sidebar = document.getElementById("sidebar");
+const toggleSidebar = document.getElementById("toggleSidebar");
+
+function criarTabelaCandidatos(props, vencedor) {
+  return candidatos
+    .map(c => {
+      const votos = props[c] || 0;
+      const pct = props["% " + c] || 0;
+      return { nome: c, votos, pct };
+    })
+    .sort((a, b) => b.votos - a.votos)
+    .map(c => {
+      const destaque = c.nome === vencedor
+        ? `style="font-weight:bold; color:${cores[c.nome] || '#333'}"`
+        : "";
+      return `
+        <tr ${destaque}>
+          <td>${c.nome}</td>
+          <td style="text-align:right; padding-left:8px">${c.votos}</td>
+          <td style="text-align:right; padding-left:8px">${c.pct.toFixed(2)}%</td>
+        </tr>
+      `;
+    })
+    .join("");
+}
+
+function criarPopupLocal(feature) {
+  const p = feature.properties;
+
+  return `
+    <b>${p["LOCAL DE VOTAÇÃO"]}</b><br>
+    <b>Bairro:</b> ${p["BAIRRO"] || "SEM BAIRRO"}<br>
+    <b>Total de votos:</b> ${p.TOTAL}<br><br>
+    <table style="font-size:12px; border-collapse:collapse; width:100%">
+      ${criarTabelaCandidatos(p, p.vencedor)}
+    </table>
+  `;
+}
+
+function agregarDadosDoBairro(features, nomeBairro) {
+  let totalVotos = 0;
+  let somaLat = 0;
+  let somaLng = 0;
+
+  const agregados = {};
+  candidatos.forEach(c => agregados[c] = 0);
+
+  features.forEach(f => {
+    const p = f.properties;
+    const coords = f.geometry.coordinates; // [lng, lat]
+
+    totalVotos += Number(p.TOTAL || 0);
+    somaLng += Number(coords[0]);
+    somaLat += Number(coords[1]);
+
+    candidatos.forEach(c => {
+      agregados[c] += Number(p[c] || 0);
+    });
+  });
+
+  let vencedor = null;
+  let maior = -1;
+
+  candidatos.forEach(c => {
+    if (agregados[c] > maior) {
+      maior = agregados[c];
+      vencedor = c;
+    }
+  });
+
+  const props = {
+    BAIRRO: nomeBairro,
+    TOTAL: totalVotos,
+    vencedor: vencedor,
+    "LOCAL DE VOTAÇÃO": `Bairro ${nomeBairro}`
+  };
+
+  candidatos.forEach(c => {
+    props[c] = agregados[c];
+    props["% " + c] = totalVotos > 0 ? (agregados[c] / totalVotos) * 100 : 0;
+  });
+
+  return {
+    type: "Feature",
+    properties: props,
+    geometry: {
+      type: "Point",
+      coordinates: [
+        somaLng / features.length,
+        somaLat / features.length
+      ]
+    }
+  };
+}
+
+function criarPopupBairro(feature, quantidadeLocais) {
+  const p = feature.properties;
+
+  return `
+    <b>${p.BAIRRO}</b><br>
+    <b>Locais de votação agregados:</b> ${quantidadeLocais}<br>
+    <b>Total de votos no bairro:</b> ${p.TOTAL}<br><br>
+    <table style="font-size:12px; border-collapse:collapse; width:100%">
+      ${criarTabelaCandidatos(p, p.vencedor)}
+    </table>
+  `;
+}
+
+function desenharPontosOriginais(features) {
+  if (geojsonLayer) {
+    map.removeLayer(geojsonLayer);
+  }
+
+  geojsonLayer = L.geoJSON(features, {
+    pointToLayer: (feature, latlng) => {
+      const p = feature.properties;
+      const cor = cores[p.vencedor] || "gray";
+      const raio = Math.sqrt(Number(p.TOTAL || 0)) / 6;
+
+      return L.circleMarker(latlng, {
+        radius: raio,
+        fillColor: cor,
+        color: "#fff",
+        weight: 1,
+        fillOpacity: 0.8
+      });
+    },
+    onEachFeature: (feature, layer) => {
+      layer.bindPopup(criarPopupLocal(feature), { maxWidth: 360 });
+    }
+  }).addTo(map);
+
+  if (features.length > 0) {
+    const bounds = geojsonLayer.getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [30, 30] });
+    }
+  }
+}
+
+function desenharPontoAgregado(featureAgregado, quantidadeLocais) {
+  if (geojsonLayer) {
+    map.removeLayer(geojsonLayer);
+  }
+
+  geojsonLayer = L.geoJSON(featureAgregado, {
+    pointToLayer: (feature, latlng) => {
+      const p = feature.properties;
+      const cor = cores[p.vencedor] || "gray";
+      const raio = Math.max(12, Math.sqrt(Number(p.TOTAL || 0)) / 4);
+
+      return L.circleMarker(latlng, {
+        radius: raio,
+        fillColor: cor,
+        color: "#fff",
+        weight: 2,
+        fillOpacity: 0.85
+      });
+    },
+    onEachFeature: (feature, layer) => {
+      layer.bindPopup(criarPopupBairro(feature, quantidadeLocais), { maxWidth: 380 });
+    }
+  }).addTo(map);
+
+  const coords = featureAgregado.geometry.coordinates;
+  map.setView([coords[1], coords[0]], 14);
+}
+
+function aplicarFiltro() {
+  const todas = geojsonData.features;
+
+  if (bairroSelecionado) {
+    const filtradas = todas.filter(f => {
+      const bairro = (f.properties.BAIRRO || "SEM BAIRRO").trim();
+      return bairro === bairroSelecionado;
+    });
+
+    if (filtradas.length > 0) {
+      const agregado = agregarDadosDoBairro(filtradas, bairroSelecionado);
+      desenharPontoAgregado(agregado, filtradas.length);
+      resultInfo.textContent = `Exibindo bairro: ${bairroSelecionado} (${filtradas.length} local(is) agregado(s))`;
+    } else {
+      resultInfo.textContent = `Nenhum dado encontrado para o bairro ${bairroSelecionado}`;
+    }
+  } else {
+    desenharPontosOriginais(todas);
+    resultInfo.textContent = `Exibindo todos os bairros (${todas.length} ponto(s))`;
+  }
+}
+
+function renderizarListaBairros(filtroTexto = "") {
+  const bairros = [...new Set(
+    geojsonData.features.map(f => (f.properties.BAIRRO || "SEM BAIRRO").trim())
+  )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const bairrosFiltrados = bairros.filter(b =>
+    b.toLowerCase().includes(filtroTexto.toLowerCase())
+  );
+
+  bairroList.innerHTML = "";
+
+  if (bairrosFiltrados.length === 0) {
+    bairroList.innerHTML = `<div class="bairro-item">Nenhum bairro encontrado</div>`;
+    return;
+  }
+
+  bairrosFiltrados.forEach(bairro => {
+    const item = document.createElement("div");
+    item.className = "bairro-item" + (bairro === bairroSelecionado ? " active" : "");
+    item.textContent = bairro;
+
+    item.addEventListener("click", () => {
+      bairroSelecionado = bairro;
+      renderizarListaBairros(bairroSearch.value);
+      aplicarFiltro();
+    });
+
+    bairroList.appendChild(item);
+  });
+}
+
+clearFilter.addEventListener("click", () => {
+  bairroSelecionado = null;
+  bairroSearch.value = "";
+  renderizarListaBairros();
+  aplicarFiltro();
+});
+
+bairroSearch.addEventListener("input", (e) => {
+  renderizarListaBairros(e.target.value);
+});
+
+toggleSidebar.addEventListener("click", () => {
+  sidebar.classList.toggle("collapsed");
+  toggleSidebar.textContent = sidebar.classList.contains("collapsed") ? "▶" : "◀";
+});
 
 fetch("resultados.geojson")
   .then(r => r.json())
   .then(data => {
-    L.geoJSON(data, {
-      pointToLayer: (feature, latlng) => {
-        const p = feature.properties;
-        const cor = cores[p.vencedor] || "gray";
-        const raio = Math.sqrt(p.TOTAL) / 6;
-
-        return L.circleMarker(latlng, {
-          radius: raio,
-          fillColor: cor,
-          color: "#fff",
-          weight: 1,
-          fillOpacity: 0.8
-        });
-      },
-      onEachFeature: (feature, layer) => {
-        const p = feature.properties;
-
-        const lista = candidatos
-          .map(c => ({ nome: c, pct: p["% " + c] || 0 }))
-          .sort((a, b) => b.pct - a.pct)
-          .map(c => {
-            const destaque = c.nome === p.vencedor
-              ? `style="font-weight:bold; color:${cores[c.nome] || '#333'}"` : "";
-            const votos = p[c.nome] || 0;
-            return `<tr ${destaque}>
-              <td>${c.nome}</td>
-              <td style="text-align:right; padding-left:8px">${votos}</td>
-              <td style="text-align:right; padding-left:8px">${c.pct.toFixed(2)}%</td>
-            </tr>`;
-          })
-          .join("");
-
-        layer.bindPopup(`
-          <b>${p["LOCAL DE VOTAÇÃO"]}</b><br>
-          Total de votos: ${p.TOTAL}<br><br>
-          <table style="font-size:12px; border-collapse:collapse; width:100%">
-            ${lista}
-          </table>
-        `, { maxWidth: 360 });
-      }
-    }).addTo(map);
+    geojsonData = data;
+    renderizarListaBairros();
+    aplicarFiltro();
+  })
+  .catch(err => {
+    console.error("Erro ao carregar resultados.geojson:", err);
+    resultInfo.textContent = "Erro ao carregar os dados do mapa.";
   });
-
 </script>
 </body>
 </html>

@@ -15,7 +15,7 @@ bairros = gpd.read_file("BR_bairros_CD2022.shp")
 teresina = bairros[bairros["CD_MUN"] == "2211001"]
 
 # Garantir que os dois estão no mesmo CRS
-teresina = teresina.to_crs(epsg=4326)  # mesmo CRS do gdf
+teresina = teresina.to_crs(epsg=4326)
 
 # Descobrir o candidato vencedor em cada local
 candidatos = [
@@ -28,19 +28,29 @@ candidatos = [
 
 gdf["vencedor"] = gdf[candidatos].idxmax(axis=1)
 
+# ── NOVO: Associa cada local de votação ao respectivo bairro via spatial join ──
+# Usa "within" para pontos dentro dos polígonos; pontos fora ficam com NaN
+gdf_joined = gpd.sjoin(
+    gdf,
+    teresina[["NM_BAIRRO", "geometry"]],
+    how="left",
+    predicate="within"
+)
+gdf["BAIRRO"] = gdf_joined["NM_BAIRRO"].values
+
+# Pontos que caíram fora de qualquer polígono (bordas, etc.) ficam como "SEM BAIRRO"
+gdf["BAIRRO"] = gdf["BAIRRO"].fillna("SEM BAIRRO")
+
 # Definir cores e plotar
 cores = {
-    "RAFAEL TAJRA FONTELES": "#e74c3c",       # vermelho
-    "SILVIO MENDES DE OLIVEIRA FILHO": "#2980b9",  # azul
-    # adicione os outros se quiser
+    "RAFAEL TAJRA FONTELES": "#e74c3c",
+    "SILVIO MENDES DE OLIVEIRA FILHO": "#2980b9",
 }
 
 fig, ax = plt.subplots(figsize=(12, 12))
 
-# 1. Mapa base
 teresina.plot(ax=ax, color="lightgray", edgecolor="white", linewidth=0.5)
 
-# 2. Pontos eleitorais
 for candidato, grupo in gdf.groupby("vencedor"):
     cor = cores.get(candidato, "gray")
     grupo.plot(
@@ -55,9 +65,12 @@ ax.legend(loc="lower right", fontsize=7)
 ax.set_title("Resultado por Local de Votação - Teresina")
 ax.axis("off")
 plt.tight_layout()
-# plt.show()
 
-# Mantém só as colunas necessárias e exporta
+# Mantém só as colunas necessárias e exporta (agora inclui BAIRRO)
 pct_cols = ["% " + c for c in candidatos]
-gdf_export = gdf[["LOCAL DE VOTAÇÃO", "TOTAL", "vencedor", "geometry"] + candidatos + pct_cols].copy()
+gdf_export = gdf[
+    ["LOCAL DE VOTAÇÃO", "BAIRRO", "TOTAL", "vencedor", "geometry"]
+    + candidatos
+    + pct_cols
+].copy()
 gdf_export.to_file("resultados.geojson", driver="GeoJSON")

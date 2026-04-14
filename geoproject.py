@@ -38,8 +38,8 @@ gdf_joined = gpd.sjoin(
 )
 gdf["BAIRRO"] = gdf_joined["NM_BAIRRO"].values
 
-# Pontos que caíram fora de qualquer polígono (bordas, etc.) ficam como "SEM BAIRRO"
-gdf["BAIRRO"] = gdf["BAIRRO"].fillna("SEM BAIRRO")
+# Pontos que caíram fora de qualquer polígono (bordas, etc.) ficam como "Zona Rural"
+gdf["BAIRRO"] = gdf["BAIRRO"].fillna("Zona Rural")
 
 # Definir cores e plotar
 cores = {

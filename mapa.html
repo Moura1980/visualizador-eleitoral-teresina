@@ -199,7 +199,7 @@ function criarPopupLocal(feature) {
 
   return `
     <b>${p["LOCAL DE VOTAÇÃO"]}</b><br>
-    <b>Bairro:</b> ${p["BAIRRO"] || "SEM BAIRRO"}<br>
+    <b>Bairro:</b> ${p["BAIRRO"] || "Zona Rural"}<br>
     <b>Total de votos:</b> ${p.TOTAL}<br><br>
     <table style="font-size:12px; border-collapse:collapse; width:100%">
       ${criarTabelaCandidatos(p, p.vencedor)}
@@ -285,7 +285,7 @@ function desenharPontosOriginais(features) {
     pointToLayer: (feature, latlng) => {
       const p = feature.properties;
       const cor = cores[p.vencedor] || "gray";
-      const raio = Math.sqrt(Number(p.TOTAL || 0)) / 6;
+      const raio = Math.sqrt(Number(p.TOTAL || 0)) / 5;
 
       return L.circleMarker(latlng, {
         radius: raio,
@@ -341,7 +341,7 @@ function aplicarFiltro() {
 
   if (bairroSelecionado) {
     const filtradas = todas.filter(f => {
-      const bairro = (f.properties.BAIRRO || "SEM BAIRRO").trim();
+      const bairro = (f.properties.BAIRRO || "Zona Rural").trim();
       return bairro === bairroSelecionado;
     });
 
@@ -360,7 +360,7 @@ function aplicarFiltro() {
 
 function renderizarListaBairros(filtroTexto = "") {
   const bairros = [...new Set(
-    geojsonData.features.map(f => (f.properties.BAIRRO || "SEM BAIRRO").trim())
+    geojsonData.features.map(f => (f.properties.BAIRRO || "Zona Rural").trim())
   )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   const bairrosFiltrados = bairros.filter(b =>

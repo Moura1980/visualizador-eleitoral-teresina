@@ -58,5 +58,6 @@ plt.tight_layout()
 # plt.show()
 
 # Mantém só as colunas necessárias e exporta
-gdf_export = gdf[["LOCAL DE VOTAÇÃO", "TOTAL", "vencedor", "geometry"] + candidatos].copy()
+pct_cols = ["% " + c for c in candidatos]
+gdf_export = gdf[["LOCAL DE VOTAÇÃO", "TOTAL", "vencedor", "geometry"] + candidatos + pct_cols].copy()
 gdf_export.to_file("resultados.geojson", driver="GeoJSON")

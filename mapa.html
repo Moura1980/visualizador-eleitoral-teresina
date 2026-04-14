@@ -16,7 +16,22 @@
 const cores = {
   "RAFAEL TAJRA FONTELES": "#e74c3c",
   "SILVIO MENDES DE OLIVEIRA FILHO": "#2980b9",
+  "GERALDO DO NASCIMENTO CARVALHO": "#f1c40f",
+  "DIEGO GOMES MELO": "#2ecc71",
+  "GESSY KARLA LIMA BORGES FONSECA": "#8e44ad",
+  "GUSTAVO HENRIQUE LEITE FEIJÓ": "#f39c12",
+  "MARIA DE LOURDES SOARES MELO": "#c0392b",
+  "MARIA MADALENA NUNES": "#16a085",
+  "RAVENNA DE CASTRO LIMA AZEVEDO": "#d35400"
 };
+
+const candidatos = [
+  "DIEGO GOMES MELO", "GERALDO DO NASCIMENTO CARVALHO",
+  "GESSY KARLA LIMA BORGES FONSECA", "GUSTAVO HENRIQUE LEITE FEIJÓ",
+  "MARIA DE LOURDES SOARES MELO", "MARIA MADALENA NUNES",
+  "RAFAEL TAJRA FONTELES", "RAVENNA DE CASTRO LIMA AZEVEDO",
+  "SILVIO MENDES DE OLIVEIRA FILHO"
+];
 
 const map = L.map('map').setView([-5.09, -42.80], 12);
 
@@ -29,7 +44,7 @@ fetch("resultados.geojson")
       pointToLayer: (feature, latlng) => {
         const p = feature.properties;
         const cor = cores[p.vencedor] || "gray";
-        const raio = Math.sqrt(p.TOTAL) / 6;  // tamanho proporcional
+        const raio = Math.sqrt(p.TOTAL) / 6;
 
         return L.circleMarker(latlng, {
           radius: raio,
@@ -41,11 +56,27 @@ fetch("resultados.geojson")
       },
       onEachFeature: (feature, layer) => {
         const p = feature.properties;
+
+        const lista = candidatos
+          .map(c => ({ nome: c, pct: p["% " + c] || 0 }))
+          .sort((a, b) => b.pct - a.pct)
+          .map(c => {
+            const destaque = c.nome === p.vencedor
+              ? `style="font-weight:bold; color:${cores[c.nome] || '#333'}"` : "";
+            return `<tr ${destaque}>
+              <td>${c.nome}</td>
+              <td style="text-align:right; padding-left:8px">${c.pct.toFixed(2)}%</td>
+            </tr>`;
+          })
+          .join("");
+
         layer.bindPopup(`
           <b>${p["LOCAL DE VOTAÇÃO"]}</b><br>
-          Vencedor: ${p.vencedor}<br>
-          Total de votos: ${p.TOTAL}
-        `);
+          Total de votos: ${p.TOTAL}<br><br>
+          <table style="font-size:12px; border-collapse:collapse; width:100%">
+            ${lista}
+          </table>
+        `, { maxWidth: 360 });
       }
     }).addTo(map);
   });

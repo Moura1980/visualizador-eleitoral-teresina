@@ -1,76 +1,99 @@
 import pandas as pd
 import geopandas as gpd
+from pathlib import Path
 from shapely.geometry import Point
-import matplotlib.pyplot as plt
 
-df = pd.read_excel("governador.xlsx")
+# ── Configurações ─────────────────────────────────────────────────────────────
 
-# Cria geometria a partir das colunas de coordenadas
-geometry = [Point(lon, lat) for lon, lat in zip(df["LONGITUDE"], df["LATITUDE"])]
-gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
+ARQUIVO_DADOS    = Path("dados.xlsx")
+ARQUIVO_BAIRROS  = Path("BR_bairros_CD2022.shp")
+ARQUIVO_SAIDA    = Path("resultados.geojson")
 
-bairros = gpd.read_file("BR_bairros_CD2022.shp")
+CODIGO_TERESINA  = "2211001"
+CRS_PADRAO       = "EPSG:4326"
 
-# Filtra só Teresina (código IBGE: 2211001)
-teresina = bairros[bairros["CD_MUN"] == "2211001"]
-
-# Garantir que os dois estão no mesmo CRS
-teresina = teresina.to_crs(epsg=4326)
-
-# Descobrir o candidato vencedor em cada local
-candidatos = [
-    "DIEGO GOMES MELO", "GERALDO DO NASCIMENTO CARVALHO",
-    "GESSY KARLA LIMA BORGES FONSECA", "GUSTAVO HENRIQUE LEITE FEIJÓ",
-    "MARIA DE LOURDES SOARES MELO", "MARIA MADALENA NUNES",
-    "RAFAEL TAJRA FONTELES", "RAVENNA DE CASTRO LIMA AZEVEDO",
-    "SILVIO MENDES DE OLIVEIRA FILHO"
+CANDIDATOS = [
+    "DIEGO GOMES MELO",
+    "GERALDO DO NASCIMENTO CARVALHO",
+    "GESSY KARLA LIMA BORGES FONSECA",
+    "GUSTAVO HENRIQUE LEITE FEIJÓ",
+    "MARIA DE LOURDES SOARES MELO",
+    "MARIA MADALENA NUNES",
+    "RAFAEL TAJRA FONTELES",
+    "RAVENNA DE CASTRO LIMA AZEVEDO",
+    "SILVIO MENDES DE OLIVEIRA FILHO",
 ]
 
-gdf["vencedor"] = gdf[candidatos].idxmax(axis=1)
 
-# ── NOVO: Associa cada local de votação ao respectivo bairro via spatial join ──
-# Usa "within" para pontos dentro dos polígonos; pontos fora ficam com NaN
-gdf_joined = gpd.sjoin(
-    gdf,
-    teresina[["NM_BAIRRO", "geometry"]],
-    how="left",
-    predicate="within"
-)
-gdf["BAIRRO"] = gdf_joined["NM_BAIRRO"].values
+# ── Carregamento ──────────────────────────────────────────────────────────────
 
-# Pontos que caíram fora de qualquer polígono (bordas, etc.) ficam como "Zona Rural"
-gdf["BAIRRO"] = gdf["BAIRRO"].fillna("Zona Rural")
+def carregar_dados() -> pd.DataFrame:
+    dados = pd.read_excel(ARQUIVO_DADOS)
+    dados["LONGITUDE"] = pd.to_numeric(dados["LONGITUDE"], errors="coerce")
+    dados["LATITUDE"]  = pd.to_numeric(dados["LATITUDE"],  errors="coerce")
+    return dados.dropna(subset=["LONGITUDE", "LATITUDE"])
 
-# Definir cores e plotar
-cores = {
-    "RAFAEL TAJRA FONTELES": "#e74c3c",
-    "SILVIO MENDES DE OLIVEIRA FILHO": "#2980b9",
-}
 
-fig, ax = plt.subplots(figsize=(12, 12))
+def criar_geodataframe(dados: pd.DataFrame) -> gpd.GeoDataFrame:
+    geometry = [Point(lon, lat) for lon, lat in zip(dados["LONGITUDE"], dados["LATITUDE"])]
+    return gpd.GeoDataFrame(dados, geometry=geometry, crs=CRS_PADRAO)
 
-teresina.plot(ax=ax, color="lightgray", edgecolor="white", linewidth=0.5)
 
-for candidato, grupo in gdf.groupby("vencedor"):
-    cor = cores.get(candidato, "gray")
-    grupo.plot(
-        ax=ax,
-        color=cor,
-        markersize=grupo["TOTAL"] / grupo["TOTAL"].max() * 100,
-        alpha=0.7,
-        label=candidato
+def carregar_bairros_teresina() -> gpd.GeoDataFrame:
+    bairros = gpd.read_file(ARQUIVO_BAIRROS)
+    bairros["CD_MUN"] = bairros["CD_MUN"].astype(str)
+    teresina = bairros[bairros["CD_MUN"] == CODIGO_TERESINA].copy()
+    return teresina.to_crs(CRS_PADRAO)
+
+
+# ── Transformações ────────────────────────────────────────────────────────────
+
+def identificar_vencedor(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    gdf = gdf.copy()
+    gdf["vencedor"] = gdf[CANDIDATOS].idxmax(axis=1)
+    return gdf
+
+
+def associar_bairros(
+    locais_gdf: gpd.GeoDataFrame,
+    teresina: gpd.GeoDataFrame,
+) -> gpd.GeoDataFrame:
+    joined = gpd.sjoin(
+        locais_gdf,
+        teresina[["NM_BAIRRO", "geometry"]],
+        how="left",
+        predicate="within",
     )
+    # Remove duplicatas geradas quando um ponto toca mais de um polígono
+    joined = joined[~joined.index.duplicated(keep="first")]
 
-ax.legend(loc="lower right", fontsize=7)
-ax.set_title("Resultado por Local de Votação - Teresina")
-ax.axis("off")
-plt.tight_layout()
+    locais_gdf = locais_gdf.copy()
+    locais_gdf["BAIRRO"] = joined["NM_BAIRRO"].reindex(locais_gdf.index).fillna("Zona Rural")
+    return locais_gdf
 
-# Mantém só as colunas necessárias e exporta (agora inclui BAIRRO)
-pct_cols = ["% " + c for c in candidatos]
-gdf_export = gdf[
-    ["LOCAL DE VOTAÇÃO", "BAIRRO", "TOTAL", "vencedor", "geometry"]
-    + candidatos
-    + pct_cols
-].copy()
-gdf_export.to_file("resultados.geojson", driver="GeoJSON")
+
+# ── Exportação ────────────────────────────────────────────────────────────────
+
+def exportar_resultado(locais_gdf: gpd.GeoDataFrame) -> None:
+    pct_cols = [f"% {c}" for c in CANDIDATOS]
+    colunas  = ["LOCAL DE VOTAÇÃO", "BAIRRO", "TOTAL", "vencedor", "geometry"]
+    colunas += CANDIDATOS + pct_cols
+    locais_gdf[colunas].to_file(ARQUIVO_SAIDA, driver="GeoJSON")
+
+
+# ── Orquestração ──────────────────────────────────────────────────────────────
+
+def main() -> None:
+    dados      = carregar_dados()
+    locais_gdf = criar_geodataframe(dados)
+    teresina   = carregar_bairros_teresina()
+
+    locais_gdf = identificar_vencedor(locais_gdf)
+    locais_gdf = associar_bairros(locais_gdf, teresina)
+
+    exportar_resultado(locais_gdf)
+    print(f"Exportado: {ARQUIVO_SAIDA}")
+
+
+if __name__ == "__main__":
+    main()

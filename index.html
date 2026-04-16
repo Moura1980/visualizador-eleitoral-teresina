@@ -30,7 +30,8 @@
       border-radius: 10px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.2);
       padding: 14px;
-      overflow: visible;
+      overflow-y: auto;
+      overflow-x: visible;
       transition: transform 0.3s ease;
     }
 
@@ -38,9 +39,60 @@
       transform: translateX(-245px);
     }
 
+    /* ── Painel de filtros ── */
+
+    #filterPanel {
+      margin-bottom: 14px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .filter-label {
+      font-size: 11px;
+      font-weight: bold;
+      color: #888;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+
+    .filter-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .filter-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .filter-btn {
+      padding: 5px 11px;
+      border: 1.5px solid #ccc;
+      border-radius: 20px;
+      background: white;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .filter-btn:hover {
+      background: #eaf3ff;
+      border-color: #90c0ff;
+    }
+
+    .filter-btn.active {
+      background: #2980b9;
+      color: white;
+      border-color: #2980b9;
+    }
+
+    /* ── Lista de bairros ── */
+
     #sidebar h3 {
       margin: 0 0 10px 0;
-      font-size: 18px;
+      font-size: 16px;
     }
 
     #bairroSearch {
@@ -54,7 +106,7 @@
     }
 
     #bairroList {
-      max-height: 60vh;
+      max-height: 30vh;
       overflow-y: auto;
       border: 1px solid #eee;
       border-radius: 8px;
@@ -95,9 +147,11 @@
 
     #resultInfo {
       margin-top: 8px;
-      font-size: 13px;
+      font-size: 12px;
       color: #555;
     }
+
+    /* ── Botão recolher ── */
 
     #toggleSidebar {
       position: absolute;
@@ -124,64 +178,206 @@
 
 <div id="sidebar">
   <button id="toggleSidebar">◀</button>
+
+  <!-- ── Painel de filtros ── -->
+  <div id="filterPanel">
+    <div class="filter-label">Carregar Dados</div>
+
+    <div class="filter-label">Tipo de Eleição</div>
+    <div class="filter-group" id="grupoTipoEleicao">
+      <!-- preenchido pelo JS -->
+    </div>
+
+    <div class="filter-label">Cargo</div>
+    <div class="filter-group" id="grupoCargo">
+      <!-- preenchido pelo JS -->
+    </div>
+  </div>
+
+  <!-- ── Lista de bairros ── -->
   <h3>Bairros</h3>
   <input type="text" id="bairroSearch" placeholder="Pesquisar bairro...">
   <div id="bairroList"></div>
   <button id="clearFilter">Limpar filtro</button>
-  <div id="resultInfo">Exibindo todos os bairros</div>
+  <div id="resultInfo">Carregando...</div>
 </div>
 
 <div id="map"></div>
 
 <script>
-const cores = {
-  "RAFAEL TAJRA FONTELES": "#e74c3c",
-  "SILVIO MENDES DE OLIVEIRA FILHO": "#2980b9",
-  "GERALDO DO NASCIMENTO CARVALHO": "#f1c40f",
-  "DIEGO GOMES MELO": "#2ecc71",
-  "GESSY KARLA LIMA BORGES FONSECA": "#8e44ad",
-  "GUSTAVO HENRIQUE LEITE FEIJÓ": "#f39c12",
-  "MARIA DE LOURDES SOARES MELO": "#c0392b",
-  "MARIA MADALENA NUNES": "#16a085",
-  "RAVENNA DE CASTRO LIMA AZEVEDO": "#d35400"
+
+// ── Configuração de eleições ───────────────────────────────────────────────
+//
+// Para adicionar uma nova eleição basta incluir uma entrada aqui.
+// A estrutura é:
+//   chave_tipo: {
+//     label: "Texto do botão",        ← texto exibido no filtro de tipo
+//     cargos: {
+//       "Nome do Cargo": {
+//         geojson:    "caminho/para/arquivo.geojson",
+//         candidatos: { "NOME COMPLETO": "#cor_hex", ... }
+//       }
+//     }
+//   }
+
+const CONFIG_ELEICOES = {
+  municipais_2024: {
+    label: "Mun. 2024",
+    cargos: {
+      Prefeito: {
+        geojson: "data/municipais_2024/prefeito_2024.geojson",
+        candidatos: {
+          "FABIO NUNEZ NOVO (PT)":                "#e74c3c",
+          "FRANCINALDO SILVA LEÃO (PSOL)":        "#f1c40f",
+          "GERALDO DO NASCIMENTO CARVALHO (PSTU)":"#8e44ad",
+          "JOSE SANTIAGO BELIZARIO (UP)":         "#f39c12",
+          "JOSÉ PESSOA LEAL (PRD)":               "#c0392b",
+          "MARIA DE LOURDES SOARES MELO (PCO)":   "#16a085",
+          "SILVIO MENDES DE OLIVEIRA FILHO (UNIAO)":"#2980b9",
+          "TELSÍRIO CARVALHO LIMA ALENCAR (MOBI)":"#d35400",
+          "TONNY KERLEY DE ALENCAR RODRIGUES (NOVO)":"#2980b9",
+        },
+      },
+    },
+  },
+  gerais_2022: {
+    label: "Gerais 2022",
+    cargos: {
+      Governador: {
+        geojson: "data/gerais_2022/governador_2022.geojson",
+        candidatos: {
+          "DIEGO GOMES MELO":                "#1abc9c",
+          "GERALDO DO NASCIMENTO CARVALHO":  "#9b59b6",
+          "GESSY KARLA LIMA BORGES FONSECA": "#34495e",
+          "GUSTAVO HENRIQUE LEITE FEIJÓ":    "#e67e22",
+          "MARIA DE LOURDES SOARES MELO":    "#2ecc71",
+          "MARIA MADALENA NUNES":            "#e84393",
+          "RAFAEL TAJRA FONTELES":           "#e74c3c",
+          "RAVENNA DE CASTRO LIMA AZEVEDO":  "#00cec9",
+          "SILVIO MENDES DE OLIVEIRA FILHO": "#0984e3",
+        },
+      },
+    },
+  },
 };
 
-const candidatos = [
-  "DIEGO GOMES MELO", "GERALDO DO NASCIMENTO CARVALHO",
-  "GESSY KARLA LIMA BORGES FONSECA", "GUSTAVO HENRIQUE LEITE FEIJÓ",
-  "MARIA DE LOURDES SOARES MELO", "MARIA MADALENA NUNES",
-  "RAFAEL TAJRA FONTELES", "RAVENNA DE CASTRO LIMA AZEVEDO",
-  "SILVIO MENDES DE OLIVEIRA FILHO"
-];
+// ── Estado global ─────────────────────────────────────────────────────────
 
-const map = L.map('map').setView([-5.09, -42.80], 12);
-
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  attribution: '&copy; OpenStreetMap & CartoDB'
-}).addTo(map);
-
-let geojsonLayer;
-let geojsonData;
+let tipoSelecionado  = "municipais_2024";
+let cargoSelecionado = "Prefeito";
+let candidatosAtivos = {};   // { "NOME": "#cor" }
+let geojsonData      = null;
+let geojsonLayer     = null;
 let bairroSelecionado = null;
 
-const bairroSearch = document.getElementById("bairroSearch");
-const bairroList = document.getElementById("bairroList");
-const clearFilter = document.getElementById("clearFilter");
-const resultInfo = document.getElementById("resultInfo");
-const sidebar = document.getElementById("sidebar");
+// ── Mapa ──────────────────────────────────────────────────────────────────
+
+const map = L.map("map", {
+  zoomControl: false
+}).setView([-5.09, -42.80], 12);
+
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  attribution: "&copy; OpenStreetMap & CartoDB",
+}).addTo(map);
+
+// ── Refs DOM ──────────────────────────────────────────────────────────────
+
+const bairroSearch  = document.getElementById("bairroSearch");
+const bairroList    = document.getElementById("bairroList");
+const clearFilter   = document.getElementById("clearFilter");
+const resultInfo    = document.getElementById("resultInfo");
+const sidebar       = document.getElementById("sidebar");
 const toggleSidebar = document.getElementById("toggleSidebar");
 
-function criarTabelaCandidatos(props, vencedor) {
-  return candidatos
-    .map(c => {
-      const votos = props[c] || 0;
-      const pct = props["% " + c] || 0;
-      return { nome: c, votos, pct };
+// ── Renderização dos filtros ───────────────────────────────────────────────
+
+function renderizarTiposEleicao() {
+  const grupo = document.getElementById("grupoTipoEleicao");
+  grupo.innerHTML = "";
+
+  Object.entries(CONFIG_ELEICOES).forEach(([chave, cfg]) => {
+    const btn = document.createElement("button");
+    btn.className  = "filter-btn" + (chave === tipoSelecionado ? " active" : "");
+    btn.textContent = cfg.label;
+
+    btn.addEventListener("click", () => {
+      tipoSelecionado = chave;
+
+      // Se o cargo atual não existe no novo tipo, usa o primeiro disponível
+      const cargosDisponiveis = Object.keys(CONFIG_ELEICOES[tipoSelecionado].cargos);
+      if (!cargosDisponiveis.includes(cargoSelecionado)) {
+        cargoSelecionado = cargosDisponiveis[0];
+      }
+
+      renderizarTiposEleicao();
+      renderizarCargos();
+      carregarGeojson();
+    });
+
+    grupo.appendChild(btn);
+  });
+}
+
+function renderizarCargos() {
+  const grupo = document.getElementById("grupoCargo");
+  grupo.innerHTML = "";
+
+  const cargos = Object.keys(CONFIG_ELEICOES[tipoSelecionado].cargos);
+
+  cargos.forEach(cargo => {
+    const btn = document.createElement("button");
+    btn.className   = "filter-btn" + (cargo === cargoSelecionado ? " active" : "");
+    btn.textContent = cargo;
+
+    btn.addEventListener("click", () => {
+      cargoSelecionado = cargo;
+      renderizarCargos();
+      carregarGeojson();
+    });
+
+    grupo.appendChild(btn);
+  });
+}
+
+// ── Carregamento de dados ─────────────────────────────────────────────────
+
+function carregarGeojson() {
+  const cfgCargo = CONFIG_ELEICOES[tipoSelecionado].cargos[cargoSelecionado];
+  candidatosAtivos = cfgCargo.candidatos;
+
+  resultInfo.textContent = "Carregando dados...";
+  bairroSelecionado = null;
+  bairroSearch.value = "";
+
+  fetch(cfgCargo.geojson)
+    .then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
     })
+    .then(data => {
+      geojsonData = data;
+      renderizarListaBairros();
+      aplicarFiltro();
+    })
+    .catch(err => {
+      console.error("Erro ao carregar GeoJSON:", err);
+      resultInfo.textContent = `Erro ao carregar: ${cfgCargo.geojson}`;
+    });
+}
+
+// ── Popups ────────────────────────────────────────────────────────────────
+
+function criarTabelaCandidatos(props, vencedor) {
+  return Object.keys(candidatosAtivos)
+    .map(c => ({
+      nome: c,
+      votos: Number(props[c] || 0),
+      pct:   Number(props["% " + c] || 0),
+    }))
     .sort((a, b) => b.votos - a.votos)
     .map(c => {
       const destaque = c.nome === vencedor
-        ? `style="font-weight:bold; color:${cores[c.nome] || '#333'}"`
+        ? `style="font-weight:bold; color:${candidatosAtivos[c.nome] || "#333"}"`
         : "";
       return `
         <tr ${destaque}>
@@ -196,7 +392,6 @@ function criarTabelaCandidatos(props, vencedor) {
 
 function criarPopupLocal(feature) {
   const p = feature.properties;
-
   return `
     <b>${p["LOCAL DE VOTAÇÃO"]}</b><br>
     <b>Bairro:</b> ${p["BAIRRO"] || "Zona Rural"}<br>
@@ -207,65 +402,8 @@ function criarPopupLocal(feature) {
   `;
 }
 
-function agregarDadosDoBairro(features, nomeBairro) {
-  let totalVotos = 0;
-  let somaLat = 0;
-  let somaLng = 0;
-
-  const agregados = {};
-  candidatos.forEach(c => agregados[c] = 0);
-
-  features.forEach(f => {
-    const p = f.properties;
-    const coords = f.geometry.coordinates; // [lng, lat]
-
-    totalVotos += Number(p.TOTAL || 0);
-    somaLng += Number(coords[0]);
-    somaLat += Number(coords[1]);
-
-    candidatos.forEach(c => {
-      agregados[c] += Number(p[c] || 0);
-    });
-  });
-
-  let vencedor = null;
-  let maior = -1;
-
-  candidatos.forEach(c => {
-    if (agregados[c] > maior) {
-      maior = agregados[c];
-      vencedor = c;
-    }
-  });
-
-  const props = {
-    BAIRRO: nomeBairro,
-    TOTAL: totalVotos,
-    vencedor: vencedor,
-    "LOCAL DE VOTAÇÃO": `Bairro ${nomeBairro}`
-  };
-
-  candidatos.forEach(c => {
-    props[c] = agregados[c];
-    props["% " + c] = totalVotos > 0 ? (agregados[c] / totalVotos) * 100 : 0;
-  });
-
-  return {
-    type: "Feature",
-    properties: props,
-    geometry: {
-      type: "Point",
-      coordinates: [
-        somaLng / features.length,
-        somaLat / features.length
-      ]
-    }
-  };
-}
-
 function criarPopupBairro(feature, quantidadeLocais) {
   const p = feature.properties;
-
   return `
     <b>${p.BAIRRO}</b><br>
     <b>Locais de votação agregados:</b> ${quantidadeLocais}<br>
@@ -276,81 +414,114 @@ function criarPopupBairro(feature, quantidadeLocais) {
   `;
 }
 
+// ── Agregação por bairro ──────────────────────────────────────────────────
+
+function agregarDadosDoBairro(features, nomeBairro) {
+  const nomes = Object.keys(candidatosAtivos);
+  let totalVotos = 0, somaLat = 0, somaLng = 0;
+  const agregados = Object.fromEntries(nomes.map(c => [c, 0]));
+
+  features.forEach(f => {
+    const p      = f.properties;
+    const coords = f.geometry.coordinates;
+    totalVotos += Number(p.TOTAL || 0);
+    somaLng    += Number(coords[0]);
+    somaLat    += Number(coords[1]);
+    nomes.forEach(c => { agregados[c] += Number(p[c] || 0); });
+  });
+
+  const vencedor = nomes.reduce((melhor, c) =>
+    agregados[c] > (agregados[melhor] ?? -1) ? c : melhor, nomes[0]);
+
+  const props = {
+    BAIRRO: nomeBairro,
+    TOTAL: totalVotos,
+    vencedor,
+    "LOCAL DE VOTAÇÃO": `Bairro ${nomeBairro}`,
+  };
+  nomes.forEach(c => {
+    props[c]          = agregados[c];
+    props["% " + c]   = totalVotos > 0 ? (agregados[c] / totalVotos) * 100 : 0;
+  });
+
+  return {
+    type: "Feature",
+    properties: props,
+    geometry: {
+      type: "Point",
+      coordinates: [somaLng / features.length, somaLat / features.length],
+    },
+  };
+}
+
+// ── Desenho no mapa ───────────────────────────────────────────────────────
+
 function desenharPontosOriginais(features) {
-  if (geojsonLayer) {
-    map.removeLayer(geojsonLayer);
-  }
+  if (geojsonLayer) map.removeLayer(geojsonLayer);
 
   geojsonLayer = L.geoJSON(features, {
     pointToLayer: (feature, latlng) => {
-      const p = feature.properties;
-      const cor = cores[p.vencedor] || "gray";
-      const raio = Math.sqrt(Number(p.TOTAL || 0)) / 5;
-
+      const p   = feature.properties;
+      const cor = candidatosAtivos[p.vencedor] || "gray";
       return L.circleMarker(latlng, {
-        radius: raio,
-        fillColor: cor,
-        color: "#fff",
-        weight: 1,
-        fillOpacity: 0.8
+        radius:      Math.sqrt(Number(p.TOTAL || 0)) / 5,
+        fillColor:   cor,
+        color:       "#fff",
+        weight:      1,
+        fillOpacity: 0.8,
       });
     },
     onEachFeature: (feature, layer) => {
       layer.bindPopup(criarPopupLocal(feature), { maxWidth: 360 });
-    }
+    },
   }).addTo(map);
 
   if (features.length > 0) {
     const bounds = geojsonLayer.getBounds();
-    if (bounds.isValid()) {
-      map.fitBounds(bounds, { padding: [30, 30] });
-    }
+    if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30] });
   }
 }
 
 function desenharPontoAgregado(featureAgregado, quantidadeLocais) {
-  if (geojsonLayer) {
-    map.removeLayer(geojsonLayer);
-  }
+  if (geojsonLayer) map.removeLayer(geojsonLayer);
 
   geojsonLayer = L.geoJSON(featureAgregado, {
     pointToLayer: (feature, latlng) => {
-      const p = feature.properties;
-      const cor = cores[p.vencedor] || "gray";
-      const raio = Math.max(12, Math.sqrt(Number(p.TOTAL || 0)) / 4);
-
+      const p   = feature.properties;
+      const cor = candidatosAtivos[p.vencedor] || "gray";
       return L.circleMarker(latlng, {
-        radius: raio,
-        fillColor: cor,
-        color: "#fff",
-        weight: 2,
-        fillOpacity: 0.85
+        radius:      Math.max(12, Math.sqrt(Number(p.TOTAL || 0)) / 4),
+        fillColor:   cor,
+        color:       "#fff",
+        weight:      2,
+        fillOpacity: 0.85,
       });
     },
     onEachFeature: (feature, layer) => {
       layer.bindPopup(criarPopupBairro(feature, quantidadeLocais), { maxWidth: 380 });
-    }
+    },
   }).addTo(map);
 
   const coords = featureAgregado.geometry.coordinates;
   map.setView([coords[1], coords[0]], 14);
 }
 
+// ── Filtro de bairro ──────────────────────────────────────────────────────
+
 function aplicarFiltro() {
   const todas = geojsonData.features;
 
   if (bairroSelecionado) {
-    const filtradas = todas.filter(f => {
-      const bairro = (f.properties.BAIRRO || "Zona Rural").trim();
-      return bairro === bairroSelecionado;
-    });
+    const filtradas = todas.filter(f =>
+      (f.properties.BAIRRO || "Zona Rural").trim() === bairroSelecionado
+    );
 
     if (filtradas.length > 0) {
       const agregado = agregarDadosDoBairro(filtradas, bairroSelecionado);
       desenharPontoAgregado(agregado, filtradas.length);
-      resultInfo.textContent = `Exibindo bairro: ${bairroSelecionado} (${filtradas.length} local(is) agregado(s))`;
+      resultInfo.textContent = `Bairro: ${bairroSelecionado} (${filtradas.length} local(is))`;
     } else {
-      resultInfo.textContent = `Nenhum dado encontrado para o bairro ${bairroSelecionado}`;
+      resultInfo.textContent = `Nenhum dado para: ${bairroSelecionado}`;
     }
   } else {
     desenharPontosOriginais(todas);
@@ -361,33 +532,33 @@ function aplicarFiltro() {
 function renderizarListaBairros(filtroTexto = "") {
   const bairros = [...new Set(
     geojsonData.features.map(f => (f.properties.BAIRRO || "Zona Rural").trim())
-  )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  )].sort((a, b) => a.localeCompare(b, "pt-BR"));
 
-  const bairrosFiltrados = bairros.filter(b =>
+  const filtrados = bairros.filter(b =>
     b.toLowerCase().includes(filtroTexto.toLowerCase())
   );
 
   bairroList.innerHTML = "";
 
-  if (bairrosFiltrados.length === 0) {
+  if (filtrados.length === 0) {
     bairroList.innerHTML = `<div class="bairro-item">Nenhum bairro encontrado</div>`;
     return;
   }
 
-  bairrosFiltrados.forEach(bairro => {
+  filtrados.forEach(bairro => {
     const item = document.createElement("div");
-    item.className = "bairro-item" + (bairro === bairroSelecionado ? " active" : "");
+    item.className  = "bairro-item" + (bairro === bairroSelecionado ? " active" : "");
     item.textContent = bairro;
-
     item.addEventListener("click", () => {
       bairroSelecionado = bairro;
       renderizarListaBairros(bairroSearch.value);
       aplicarFiltro();
     });
-
     bairroList.appendChild(item);
   });
 }
+
+// ── Eventos ───────────────────────────────────────────────────────────────
 
 clearFilter.addEventListener("click", () => {
   bairroSelecionado = null;
@@ -396,7 +567,7 @@ clearFilter.addEventListener("click", () => {
   aplicarFiltro();
 });
 
-bairroSearch.addEventListener("input", (e) => {
+bairroSearch.addEventListener("input", e => {
   renderizarListaBairros(e.target.value);
 });
 
@@ -405,17 +576,12 @@ toggleSidebar.addEventListener("click", () => {
   toggleSidebar.textContent = sidebar.classList.contains("collapsed") ? "▶" : "◀";
 });
 
-fetch("resultados.geojson")
-  .then(r => r.json())
-  .then(data => {
-    geojsonData = data;
-    renderizarListaBairros();
-    aplicarFiltro();
-  })
-  .catch(err => {
-    console.error("Erro ao carregar resultados.geojson:", err);
-    resultInfo.textContent = "Erro ao carregar os dados do mapa.";
-  });
+// ── Inicialização ─────────────────────────────────────────────────────────
+
+renderizarTiposEleicao();
+renderizarCargos();
+carregarGeojson();
+
 </script>
 </body>
 </html>
